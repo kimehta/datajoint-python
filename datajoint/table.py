@@ -3,13 +3,15 @@ import itertools
 import inspect
 import platform
 import numpy as np
+import pyparsing as pp
+import re
 import pandas
 import pymysql
 import logging
 import warnings
 from pymysql import OperationalError, InternalError, IntegrityError
 from .settings import config
-from .declare import declare
+from .declare import declare, is_foreign_key, attribute_parser
 from .expression import QueryExpression
 from .blob import pack
 from .utils import user_choice
@@ -72,7 +74,143 @@ class Table(QueryExpression):
                 raise
         else:
             self._log('Declared ' + self.full_table_name)
+    
+    def preview_alter(self,new_definition=None):
+        """
+        Returns changes required to go from current defition to new defition.
+        Does not execute any changes. Use alter() method to finalize any changes.
+        Only supports table comment, and SECONDARY attribute changes(ADD,DROP,CHANGE).
+        Reordering currently not supported.
+        Use # {<old_name>} <comment> to rename given attribute.(insert values between '< >') 
 
+        :param new_definition: string, same format used to create the table.
+        :return: alter sql. 
+        """
+
+        alter_sql = '' #alter sql
+
+        #change in table comment
+        new_definition = re.split(r'\s*\n\s*', new_definition.strip())
+        new_table_comment = new_definition.pop(0)[1:].strip() if new_definition[0].startswith('#') else ''
+        
+        if (self.heading.table_info['comment'] != new_table_comment):    
+            alter_sql += ('COMMENT = "{new_table_comment}", '.format(new_table_comment = new_table_comment))
+        
+        new_attributes = []
+        in_key = True
+        
+        for line in new_definition:
+            if line.startswith('#'):
+                continue
+            elif line.startswith('---') or line.startswith('___'):
+                in_key = False
+            elif is_foreign_key(line):
+                continue
+            elif re.match(r'^(unique\s+)?index[^:]*$', line, re.I): # index
+                continue
+            else:
+                if not in_key:
+                    # change in secondary attributes
+                    try:
+                        attr = attribute_parser.parseString(line+'#', parseAll=True)
+                    except pp.ParseException as err:
+                        raise DataJointError('Declaration error in position {pos} in line:\n  {line}\n{msg}'.format(
+                            line=err.args[0], pos=err.args[1], msg=err.args[2]))
+                    
+                    #external not supported
+                    if attr['type'].startswith('external'):
+                        continue
+
+                    #old_name and name are the same if no rename
+                    attr['old_name'] = attr['name']
+                    attr['comment'] = attr['comment'].rstrip('#')
+                    
+                    #extract rename, and new comment if necessary. brackets after any alphanumerical are ignored.
+                    rename = re.match(r'\s*{\s*(?P<name>[a-z][a-z0-9_]*)\s*}\s*(?P<comment>.*)', attr['comment'])
+                    if rename:
+                        attr['old_name'] = rename.group('name')
+                        attr['comment'] = rename.group('comment')
+
+                    attr['comment'] = attr['comment'].replace('"', '\\"')   # escape double quotes in comment
+
+                    #Extract changes in default, and nullable
+                    if 'default' not in attr:
+                        attr['default'] = ''
+                    attr = {k: v.strip() for k, v in attr.items()}
+                    attr['nullable'] = attr['default'].lower() == 'null'
+                    literals = ['CURRENT_TIMESTAMP'] 
+                    if attr['nullable']:
+                        if in_key:
+                            raise DataJointError('Primary key attributes cannot be nullable in line %s' % line)
+                        attr['default'] = 'NULL'
+                    else:
+                        if attr['default']:
+                            quote = attr['default'].upper() not in literals and attr['default'][0] in '"\''
+                            attr['default'] = ('"'+attr['default'][1:len(attr['default'])-1]+'"' if quote else attr['default'])
+                        else:
+                            attr['default'] = None
+
+                    #add attribute
+                    if attr['name'] not in self.heading.attributes and not rename:
+                        alter_sql += ('ADD COLUMN {name} {type}{default}{comment}, '.format(
+                                        name=attr['name'], 
+                                        type=attr['type'], 
+                                        null=' NOT NULL' if not attr['nullable'] else '',
+                                        default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
+                                        comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
+                        new_attributes.append(attr)
+                        continue
+
+                    #change attribute
+                    column_definition = ('{type}{null}{default}{comment}'.format(
+                                            type=attr['type'],
+                                            null=' NOT NULL' if not attr['nullable'] else '',
+                                            default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
+                                            comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
+                    if (rename
+                        or any(getattr(self.heading.attributes[attr['old_name']],attr_def) != attr[attr_def] 
+                            for attr_def in ('type','nullable','default','comment'))):
+                        alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition}, '.format(
+                                        old_name=attr['old_name'], name=attr['name'], column_definition=column_definition))
+                        
+                    new_attributes.append(attr)
+
+        #Drop attribute
+        for old_attribute in self.heading.dependent_attributes:
+            if (all(old_attribute != new_attribute['old_name'] for new_attribute in new_attributes) 
+                and not self.heading.attributes[old_attribute].type.startswith('external') 
+                and not any(old_attribute in tup for tup in self.heading.indexes.keys())):
+                alter_sql += ('DROP COLUMN {old_name}, '.format(old_name=old_attribute))
+
+        if alter_sql:
+            alter_sql = 'ALTER TABLE %s %s;' % (self.full_table_name, alter_sql[:-2])
+        
+        return alter_sql or None
+
+    def alter(self, new_definition = None, alter_statement = None):
+        """
+        Execute an ALTER TABLE statement.
+        :param new_definition: new definition.
+        :param alter_statement: optional alter statements.
+        if provided, alter_statement overrides new_definition.
+        """
+
+        if new_definition is None and alter_statement is None:
+            raise DataJointError("No alter specification provided.")
+
+        if self.connection.in_transaction:
+            raise DataJointError("Table definition cannot be altered during a transaction.")
+        
+        if alter_statement is None:
+            alter_statement = self.preview_alter(new_definition)
+
+        if alter_statement:        
+            self.connection.query(alter_statement)
+            self.heading.init_from_database(self.connection, self.database, self.table_name)
+
+        ##need to add make calls for auto-populate tables, since the new columns are set to null.
+        ##...
+        
     @property
     def from_clause(self):
         """
