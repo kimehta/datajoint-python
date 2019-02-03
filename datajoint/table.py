@@ -133,7 +133,7 @@ class Table(QueryExpression):
                 for att in atts[::-1]:
                     if att not in new_attributes:
                         new_attributes.append({'old_name':att,'name':att})
-                        after = atts[-1] if atts else after
+                        after = att
                         continue
             elif re.match(r'^(unique\s+)?index[^:]*$', line, re.I): # index
                 continue
@@ -184,17 +184,19 @@ class Table(QueryExpression):
 
                     #add attribute
                     if attr['name'] not in self.heading.attributes and not rename:
-                        alter_sql += ('ADD COLUMN {name} {type}{null}{default}{comment}, '.format(
+                        alter_sql += ('ADD COLUMN {name} {type}{null}{default}{comment}{aftercol}, '.format(
                                         name=attr['name'], 
                                         type=attr['type'], 
                                         null=' NOT NULL' if not attr['nullable'] else '',
                                         default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
-                                        comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
-                        #new_attributes.append(attr)
+                                        comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else '',
+                                        aftercol=' AFTER {aftr}'.format(aftr=after)))
+                        old_attributes[old_attributes.index(after):old_attributes.index(after)] = [attr['name']]
                         continue
 
                     #change attribute
                     if (rename
+                        or after != old_attributes[max(0, old_attributes.index(attr['old_name']) - 1)]
                         or any(getattr(self.heading.attributes[attr['old_name']],attr_def) != attr[attr_def] 
                             for attr_def in ('type','nullable','default','comment'))):
                         #both enums?
@@ -211,9 +213,10 @@ class Table(QueryExpression):
                                             null=' NOT NULL' if not attr['nullable'] else '',
                                             default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
                                             comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
-                        alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition}, '.format(
-                                        old_name=attr['old_name'], name=attr['name'], column_definition=column_definition))
-                        
+                        alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition} {aftercol}, '.format(
+                                        old_name=attr['old_name'], name=attr['name'], column_definition=column_definition, aftercol=' AFTER {aftr}'.format(aftr=after)))
+                        old_attributes.pop(old_attributes.index(attr['old_name']))
+                        old_attributes[old_attributes.index(after)+1:old_attributes.index(after)+1] = [attr['name']]
                     #new_attributes.append(attr)
 
         #Drop attribute
