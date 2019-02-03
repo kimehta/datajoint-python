@@ -297,7 +297,7 @@ class TestRelation:
         subject_id   :int  #  unique subject id
         ---
         real_id            :varchar(40)  # real-world name. Omit if the same as subject_id
-        species = "mouse"  :enum("mouse", "monkey", "human")
+        species = 'monkey' :enum('mouse', 'monkey', 'human', 'fish')
         dob      :date #{date_of_birth}
         subject_notes      :varchar(4000)
         unique index (real_id, species)
