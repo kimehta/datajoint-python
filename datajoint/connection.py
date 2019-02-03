@@ -138,7 +138,7 @@ class Connection:
         cursor = client.cursors.DictCursor if as_dict else client.cursors.Cursor
         cur = self._conn.cursor(cursor=cursor)
 
-        logger.debug("Executing SQL:" + query[0:300])
+        logger.debug("Executing SQL:" + query[0:400])
         try:
             with warnings.catch_warnings():
                 if suppress_warnings:
