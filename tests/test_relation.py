@@ -298,3 +298,5 @@ class TestRelation:
         #revert
         self.subject.alter(old_definition)
         self.subject.insert(self.subject.contents,replace=True)
+
+        self.subject.alter(alter_statement='ALTER TABLE gg')
