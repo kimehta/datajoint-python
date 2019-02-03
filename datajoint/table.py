@@ -14,7 +14,7 @@ from .settings import config
 from .declare import declare, is_foreign_key, attribute_parser
 from .expression import QueryExpression
 from .blob import pack
-from .utils import user_choice
+from .utils import user_choice, to_camel_case
 from .heading import Heading
 from .errors import server_error_codes, DataJointError, DuplicateError
 from .version import __version__ as version
@@ -75,7 +75,7 @@ class Table(QueryExpression):
         else:
             self._log('Declared ' + self.full_table_name)
     
-    def preview_alter(self,new_definition=None):
+    def make_alter(self,new_definition=None):
         """
         Returns changes required to go from current defition to new defition.
         Does not execute any changes. Use alter() method to finalize any changes.
@@ -96,9 +96,29 @@ class Table(QueryExpression):
         if (self.heading.table_info['comment'] != new_table_comment):    
             alter_sql += ('COMMENT = "{new_table_comment}", '.format(new_table_comment = new_table_comment))
         
-        new_attributes = []
+        old_attributes = self.heading.as_sql.replace('`','').split(',')
+        new_attributes = [] #non foreign, non index dependent attributes
         in_key = True
         
+        #check for unsupported changes
+        old_unsupported = []
+        for line in re.split(r'\s*\n\s*', self.definition.strip()):
+            if line.startswith('---') or line.startswith('___'):
+                in_key = False 
+            if is_foreign_key(line) or re.match(r'^(unique\s+)?index[^:]*$', line, re.I) or (in_key and not line.startswith('#')):
+                line = line.replace(' ','')
+                old_unsupported.append(line.replace('"','\''))
+        in_key = True
+        new_unsupported = []
+        for line in new_definition:
+            if line.startswith('---') or line.startswith('___'):
+                in_key = False 
+            if is_foreign_key(line) or re.match(r'^(unique\s+)?index[^:]*$', line, re.I) or (in_key and not line.startswith('#')):
+                line = line.replace(' ','')
+                new_unsupported.append(line.replace('"','\''))
+        if new_unsupported != old_unsupported:
+            raise DataJointError('Unsupported changes(PK,FK,Index) detected.')
+
         for line in new_definition:
             if line.startswith('#'):
                 continue
@@ -211,15 +231,13 @@ class Table(QueryExpression):
             raise DataJointError("Table definition cannot be altered during a transaction.")
         
         if alter_statement is None:
-            alter_statement = self.preview_alter(new_definition)
+            alter_statement = self.make_alter(new_definition)
 
         if alter_statement:        
             self.connection.query(alter_statement)
             self.heading.init_from_database(self.connection, self.database, self.table_name)
-
-        ##need to add make calls for auto-populate tables, since the new columns are set to null.
-        ##...
-        
+            self.connection.schemas[self.database].context[to_camel_case(self.table_name)].definition = new_definition
+            
     @property
     def from_clause(self):
         """
