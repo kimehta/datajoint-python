@@ -282,6 +282,7 @@ class TestRelation:
         subject_notes      :varchar(4000)
         unique index (real_id, species)
         """
+        print('Initially:\n'+self.subject.head)
         self.subject.alter(new_definition)
         assert_false(self.subject.heading.table_info['comment'])
         assert_true('fish' in self.subject.heading.attributes['species'].type
@@ -294,8 +295,9 @@ class TestRelation:
                     and not self.subject.heading.attributes['salary'].default)
         assert_true('subject_notes' not in self.subject.heading.attributes)
 
-        print(self.subject.head)
+        print('After first alter:\n'+self.subject.head)
         #revert
         self.subject.alter(old_definition)
+        print('After second alter:\n'+self.subject.head)
         self.subject.insert(self.subject.contents,replace=True)
         self.subject.alter(alter_statement='ALTER TABLE gg')
