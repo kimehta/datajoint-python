@@ -11,7 +11,7 @@ import logging
 import warnings
 from pymysql import OperationalError, InternalError, IntegrityError
 from .settings import config
-from .declare import declare, is_foreign_key, attribute_parser
+from .declare import declare, is_foreign_key, attribute_parser, compile_foreign_key
 from .expression import QueryExpression
 from .blob import pack
 from .utils import user_choice, to_camel_case
@@ -125,7 +125,14 @@ class Table(QueryExpression):
             elif line.startswith('---') or line.startswith('___'):
                 in_key = False
             elif is_foreign_key(line):
-                continue
+                atts = []
+                not_needed = []
+                compile_foreign_key(line,self.connection.schemas[self.database].context,atts,not_needed,not_needed,not_needed,not_needed)
+                for att in atts[::-1]:
+                    if att not in new_attributes:
+                        new_attributes.append({'old_name':att,'name':att})
+                        after = atts[-1] if atts else after
+                        continue
             elif re.match(r'^(unique\s+)?index[^:]*$', line, re.I): # index
                 continue
             else:
@@ -170,6 +177,9 @@ class Table(QueryExpression):
                         else:
                             attr['default'] = None
 
+                    after = new_attributes[-1]['name'] if new_attributes else after
+                    new_attributes.append(attr)
+
                     #add attribute
                     if attr['name'] not in self.heading.attributes and not rename:
                         alter_sql += ('ADD COLUMN {name} {type}{null}{default}{comment}, '.format(
@@ -178,7 +188,7 @@ class Table(QueryExpression):
                                         null=' NOT NULL' if not attr['nullable'] else '',
                                         default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
                                         comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
-                        new_attributes.append(attr)
+                        #new_attributes.append(attr)
                         continue
 
                     #change attribute
@@ -202,7 +212,7 @@ class Table(QueryExpression):
                         alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition}, '.format(
                                         old_name=attr['old_name'], name=attr['name'], column_definition=column_definition))
                         
-                    new_attributes.append(attr)
+                    #new_attributes.append(attr)
 
         #Drop attribute
         for old_attribute in self.heading.dependent_attributes:
