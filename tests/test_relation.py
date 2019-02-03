@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 from . import schema
 
-
 def relation_selector(attr):
     try:
         return issubclass(attr, Table)
@@ -295,8 +294,8 @@ class TestRelation:
                     and not self.subject.heading.attributes['salary'].default)
         assert_true('subject_notes' not in self.subject.heading.attributes)
 
+        print(self.subject.head)
         #revert
         self.subject.alter(old_definition)
         self.subject.insert(self.subject.contents,replace=True)
-
         self.subject.alter(alter_statement='ALTER TABLE gg')
