@@ -304,7 +304,7 @@ class TestRelation:
         """
         print('Initially:\n')
         print(self.subject.head)
-         self.subject.alter(nnew_definition)
+        self.subject.alter(nnew_definition)
         # assert_false(self.subject.heading.table_info['comment'])
         # assert_true('fish' in self.subject.heading.attributes['species'].type
         #         and 'monkey' == self.subject.heading.attributes['species'].default.strip('"'))
