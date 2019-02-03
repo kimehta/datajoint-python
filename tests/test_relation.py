@@ -8,6 +8,7 @@ import datajoint as dj
 from datajoint import utils, DataJointError
 from datajoint.table import Table
 from unittest.mock import patch
+import pkg_resources
 
 from . import schema
 
@@ -302,6 +303,9 @@ class TestRelation:
         subject_notes      :varchar(4000)
         unique index (real_id, species)
         """
+        print('+++++++++++++++++++++++\n')
+        print(pkg_resources.get_distribution("pymysql").version)
+        print('+++++++++++++++++++++++\n')
         print('Initially:\n')
         print(self.subject.head)
         self.subject.alter(nnew_definition)

@@ -190,7 +190,7 @@ class Table(QueryExpression):
                                         null=' NOT NULL' if not attr['nullable'] else '',
                                         default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
                                         comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else '',
-                                        aftercol=' AFTER {aftr}'.format(aftr=after)if False else ''))
+                                        aftercol=' AFTER {aftr}'.format(aftr=after)))
                         old_attributes[old_attributes.index(after):old_attributes.index(after)] = [attr['name']]
                         continue
 
@@ -214,7 +214,7 @@ class Table(QueryExpression):
                                             default=' DEFAULT {default}'.format(default=attr['default']) if attr['default'] else '',
                                             comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
                         alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition} {aftercol}, '.format(
-                                        old_name=attr['old_name'], name=attr['name'], column_definition=column_definition, aftercol=' AFTER {aftr}'.format(aftr=after) if False else ''))
+                                        old_name=attr['old_name'], name=attr['name'], column_definition=column_definition, aftercol=' AFTER {aftr}'.format(aftr=after)))
                         old_attributes.pop(old_attributes.index(attr['old_name']))
                         old_attributes[old_attributes.index(after)+1:old_attributes.index(after)+1] = [attr['name']]
                     #new_attributes.append(attr)
