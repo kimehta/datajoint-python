@@ -118,7 +118,9 @@ class Table(QueryExpression):
                 new_unsupported.append(line.replace('"','\''))
         if new_unsupported != old_unsupported:
             raise DataJointError('Unsupported changes(PK,FK,Index) detected.')
-
+        
+        after = self.heading.primary_key[-1] if self.heading.primary_key else 'FIRST'
+        in_key = True
         for line in new_definition:
             if line.startswith('#'):
                 continue
