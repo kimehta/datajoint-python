@@ -215,8 +215,8 @@ class Table(QueryExpression):
                                             comment=' COMMENT "{comment}"'.format(comment=attr['comment']) if attr['comment'] else ''))
                         alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition}, '.format(
                                         old_name=attr['old_name'], name=attr['name'], column_definition=column_definition))
-                        alter_sql += ('CHANGE COLUMN {old_name} {name} {column_definition} {aftercol}, '.format(
-                                        old_name=attr['old_name'], name=attr['name'], column_definition=column_definition, aftercol=' AFTER {aftr}'.format(aftr=after)))
+                        alter_sql += ('MODIFY COLUMN {name} {column_definition} {aftercol}, '.format(
+                                        name=attr['name'], column_definition=column_definition, aftercol=' AFTER {aftr}'.format(aftr=after)))
                         old_attributes.pop(old_attributes.index(attr['old_name']))
                         old_attributes[old_attributes.index(after)+1:old_attributes.index(after)+1] = [attr['name']]
                     #new_attributes.append(attr)
